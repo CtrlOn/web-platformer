@@ -162,13 +162,11 @@ function loop(t) {
   update(dt);
 
   // render
-  const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-bg.addColorStop(0,   '#7ecaff');
-bg.addColorStop(1.5, '#62a7ff');
-bg.addColorStop(1,   '#4e84ff');
-
-ctx.fillStyle = bg;
-ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#77D'; // replace with your desired color
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.scale(camera.scale, camera.scale);
+  ctx.translate(-camera.x, -camera.y);
 
   // draw grid
   ctx.strokeStyle = '#66D';
