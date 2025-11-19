@@ -42,7 +42,7 @@ window.addEventListener('keyup', e => { keyStates[e.key] = false; });
 
 // player (in game units)
 const player = {
-  x: 50, y: 50, w: 24, h: 32,
+  x: 50, y: 50, w: 22, h: 25,
   vx: 0, vy: 0,
   maxSpeed: 3.6,
   accelGround: 0.5,
