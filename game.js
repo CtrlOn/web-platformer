@@ -35,7 +35,7 @@ window.addEventListener('keydown', e => {
   if (e.key === 'z' || e.key === 'ArrowUp' || e.key === 'w') {
     if (keyStates[e.key] !== true) {
       // jump buffer: store an expiry timestamp (ms)
-      jumpFrame = Date.now() + 150; // 150ms buffer
+      jumpFrame = Date.now() + MOVE.jumpBuffer;
     }
   }
   keyStates[e.key] = true;
@@ -46,39 +46,37 @@ window.addEventListener('keyup', e => {
   if (e.key === 'z' || e.key === 'ArrowUp' || e.key === 'w') {
     // if we are moving upward, cut the jump for tighter control
     if (player.vy < 0) {
-      player.vy *= player.jumpCutMultiplier;
+      player.vy *= MOVE.jumpCutMultiplier;
     }
   }
   keyStates[e.key] = false;
 });
 
 // player (in game units)
-const player = {
-  x: 40, y: 40, w: 25, h: 25,
-  vx: 0, vy: 0,
-  // tuning
-  maxSpeedGround: 4.0,
-  maxSpeedAir: 3.0,
-  // slip tuning: do NOT increase max ground speed on slip tiles (that made them feel like boosters)
-  slipMaxSpeedMult: 1.0,
+// Movement constants (separate from runtime `player` state)
+const MOVE = {
+  maxSpeedGround: 4.5,
+  maxSpeedAir: 4.5,
   accelGround: 0.9,
-  frictionGround: 0.8, // how fast vx approaches 0 when no input
-  slipFriction: 0.04, // reduced friction when on slip tiles (more slide)
-  accelAir: 0.45,
-  // slip reduces ground traction (less responsive steering)
-  slipAccelMult: 0.6,
-  airControlMultiplier: 1.0,
+  frictionGround: 0.8, // how fast vx approaches 0 when no input (ground)
+  accelAir: 0.15,
   gravity: 0.55,
   maxFallSpeed: 14,
   jumpPower: 12,
-  jumpCutMultiplier: 0.5, // applied when releasing jump mid-ascent
+  jumpCutMultiplier: 0.5,
 
-  // quality-of-life jump features (ms)
+  // timers (ms)
   coyoteTime: 120,
-  coyoteUntil: 0,
-  // runtime state
+  jumpBuffer: 150
+};
+
+// player (runtime state only)
+const player = {
+  x: 40, y: 40, w: 25, h: 25,
+  vx: 0, vy: 0,
+  // runtime flags
   onGround: false,
-  onSlip: false
+  coyoteUntil: 0
 };
 
 // spawn/respawn
@@ -89,6 +87,21 @@ function respawn() {
   player.vx = 0;
   player.vy = 0;
   player.onGround = false;
+  // immediately restore any unstable tiles so the world resets on player respawn
+  restoreUnstableNow();
+}
+
+function restoreUnstableNow() {
+  // restore any unstable tiles from the original base level
+  for (let rr = 0; rr < rows; rr++) {
+    for (let cc = 0; cc < cols; cc++) {
+      if (baseLevel[rr] && baseLevel[rr][cc] === Tile.Unstable) {
+        level[rr][cc] = Tile.Unstable;
+      }
+    }
+  }
+  // clear any visual-only unstable states
+  for (const k in unstableState) delete unstableState[k];
 }
 
 // tiles
@@ -96,15 +109,13 @@ const Tile = {
   Empty: 0,
   Solid: 1,
   Kill: 2,
-  Slip: 3,
-  Unstable: 4
+  Unstable: 3
 };
 
 const tileProperties = {
   [Tile.Empty]: { color: null, solid: false, behavior: 'none' },
   [Tile.Solid]: { color: [135, 170, 35], solid: true, behavior: 'solid' },
   [Tile.Kill]: { color: [255, 60, 60], solid: false, behavior: 'kill' },
-  [Tile.Slip]: { color: [0, 200, 200], solid: true, behavior: 'slip' },
   [Tile.Unstable]: { color: [255, 200, 0], solid: true, behavior: 'unstable' }
 };
 
@@ -152,24 +163,28 @@ function parseLevelText(text) {
 
 // Embedded level data (from level.txt) to avoid CORS issues when publishing
 const levelText = `0000000000000000000000000000000000000000000000000000000000021222222222000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000001000011100000000001111111100000000000000
-0000000000000000000000000000000000000000000000000000200000001000000000000000000000000000000000000000
-0000000000000000000000000003300000003333333333333333300000031000000333300000000000000000000000000000
+0000000000000000000000000000000000000000000000000000300000001000011100000000001111111100000000000000
+0000000000000000000000000000000330000000000000000000200000001000000000000000000000000000000000000000
+0000000000000000000000000003300000003333333333333333300000331000000333300000000000000000000000000000
 0000000000000000000000000000000000000000020000020000000000001000000000000000000000000000000000000000
-0000000000000000000111110000000000000000022222220000000000221000100000000000000000000000000000000000
+0000000000000000000111110000000000000000022222220000000022221000103000000000000000000000000000000000
 0000000000000000000000000000000000000000000020000000000000001000000000000000000000000000000000000000
 0000000000000000000000000001001000000000000020000000000000002000000000000000000000000000000000000000
 0000000000000000000000000002002000000000000020000000000000000000000000100000000000000000000000000000
-0000000000000000000000000000000000000000000020003333000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000020003333300000000000000000000000000000000000000000000000
 0000000000000000000000033333333333300000000020000000000000002000000000000000000000000000000000000000
-0000000000000001001000000000000000000000000020000000000000001000111111100000000000000000000000000000
+0000000000000001001000000000000000000000000020000000000000301000111111100000000000000000000000000000
 0000000000100001221000000000000000000000000020000000000010001000000000000000000000000000000000000000
-0000000000000001221222222222222222222222222222222222222212221000000000000000000000000000000000000000
+0000000000000001221222222222222222222222222222222222222212221000122222200000000000000000000000000000
 1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`;
 
-// track timers for unstable tiles (key = "r,c" -> expire timestamp)
-const unstableTimers = {};
+// snapshot of original level to allow respawning unstable tiles
+let baseLevel = [];
+
+// per-instance unstable tile state (key = "r,c")
+// { state: 'crumbling'|'fallen', start, breakAt, respawnAt, fallY, vy }
+const unstableState = {};
 
 function tileAtPixel(px, py) {
   const c = Math.floor(px / tileSize);
@@ -197,29 +212,24 @@ function update(dt) {
   // input
   const inputX = (((keyStates['ArrowRight'] || keyStates['d']) ? 1 : 0) - ((keyStates['ArrowLeft'] || keyStates['a']) ? 1 : 0));
 
-  // keep previous slip state for movement tuning this frame
-  const prevOnSlip = player.onSlip;
-  // reset slip flag; collideVertical will re-enable it if we land on a slip tile
-  player.onSlip = false;
+  // (no slip/groundRetention logic — simplified movement)
 
-  // determine acceleration (use previous-frame slip state to reduce ground responsiveness)
-  const accel = player.onGround ? player.accelGround * (prevOnSlip ? player.slipAccelMult : 1) : player.accelAir;
-
-  // smooth acceleration toward desired velocity (use conservative max based on previous grounded state)
-  const desiredVx = inputX * (player.onGround ? player.maxSpeedGround : player.maxSpeedAir);
+  // Horizontal control (simple single-step integration)
+  const accel = player.onGround ? MOVE.accelGround : MOVE.accelAir;
+  const desiredVx = inputX * (player.onGround ? MOVE.maxSpeedGround : MOVE.maxSpeedAir);
   player.vx = approach(player.vx, desiredVx, accel * dt);
 
   // jump (buffered + coyote time)
   if (jumpFrame > t && (player.onGround || t <= player.coyoteUntil)) {
-    player.vy = -player.jumpPower;
+    player.vy = -MOVE.jumpPower;
     player.onGround = false;
     jumpFrame = 0;
     player.coyoteUntil = 0;
   }
 
   // vertical physics
-  player.vy += player.gravity * dt;
-  if (player.vy > player.maxFallSpeed) player.vy = player.maxFallSpeed;
+  player.vy += MOVE.gravity * dt;
+  if (player.vy > MOVE.maxFallSpeed) player.vy = MOVE.maxFallSpeed;
 
   // integrate and resolve collisions
   player.x += player.vx * dt;
@@ -227,36 +237,44 @@ function update(dt) {
   player.y += player.vy * dt;
   collideVertical();
 
-  // AFTER vertical collision we know whether we're standing on a slip tile.
-  // clamp horizontal speed to the correct max (with immediate slip effect)
-  const actualMaxSpeed = player.onGround
-    ? player.maxSpeedGround * (player.onSlip ? player.slipMaxSpeedMult : 1)
-    : player.maxSpeedAir;
+  // clamp horizontal speed to current max
+  const actualMaxSpeed = player.onGround ? MOVE.maxSpeedGround : MOVE.maxSpeedAir;
   player.vx = Math.max(-actualMaxSpeed, Math.min(actualMaxSpeed, player.vx));
 
-  // re-evaluate horizontal control immediately after landing so slip affects accel
-  if (player.onGround) {
-    const desiredVx_ground = inputX * player.maxSpeedGround;
-    const groundAccel = player.onSlip ? player.accelGround * player.slipAccelMult : player.accelGround;
-    player.vx = approach(player.vx, desiredVx_ground, groundAccel * dt);
-    // clamp again to the proper max (in case re-eval pushed it over)
-    player.vx = Math.max(-actualMaxSpeed, Math.min(actualMaxSpeed, player.vx));
-  }
-
-  // apply ground friction using the current slip state so landing on slip tiles slides immediately
+  // ground friction when no input
   if (inputX === 0 && player.onGround) {
-    const groundFriction = player.onSlip ? player.slipFriction : player.frictionGround;
-    player.vx = approach(player.vx, 0, groundFriction * dt);
+    player.vx = approach(player.vx, 0, MOVE.frictionGround * dt);
   }
 
-  // unstable tile handling: break tiles whose timer expired
-  for (const key in unstableTimers) {
-    if (unstableTimers[key] <= t) {
-      const [rr, cc] = key.split(',').map(Number);
-      if (level[rr] && level[rr][cc] === Tile.Unstable) {
-        level[rr][cc] = Tile.Empty;
+  
+
+  // process unstable tiles: animate crumbling, spawn falling debris, and respawn
+  for (const key in unstableState) {
+    const st = unstableState[key];
+    const now = Date.now();
+    const [rr, cc] = key.split(',').map(Number);
+
+    if (st.state === 'crumbling' && now >= st.breakAt) {
+      // break the tile (becomes empty) and start falling debris
+      if (level[rr] && level[rr][cc] === Tile.Unstable) level[rr][cc] = Tile.Empty;
+      st.state = 'fallen';
+      st.fallY = 0;
+      st.vy = 0;
+      if (!st.respawnAt) st.respawnAt = now + 6000; // 6s after break
+    }
+
+    if (st.state === 'fallen') {
+      // falling piece physics (purely visual)
+      st.vy += MOVE.gravity * dt * 10; // scale for visible effect
+      st.fallY += st.vy * dt;
+
+      // respawn after timeout
+      if (now >= st.respawnAt) {
+        if (baseLevel[rr] && baseLevel[rr][cc] === Tile.Unstable) {
+          level[rr][cc] = Tile.Unstable;
+        }
+        delete unstableState[key];
       }
-      delete unstableTimers[key];
     }
   }
 
@@ -277,7 +295,7 @@ function collideHorizontal() {
       respawn();
       return;
     }
-    if (behavior === 'solid' || behavior === 'slip' || behavior === 'unstable') {
+    if (behavior === 'solid' || behavior === 'unstable') {
       // align player to tile edge
       if (sign > 0) player.x = Math.floor((testX) / tileSize) * tileSize - player.w - 0.001;
       else player.x = (Math.floor(testX / tileSize) + 1) * tileSize + 0.001;
@@ -306,7 +324,7 @@ function collideVertical() {
       return;
     }
 
-    if (behavior === 'solid' || behavior === 'slip' || behavior === 'unstable') {
+    if (behavior === 'solid' || behavior === 'unstable') {
       if (sign > 0) {
         // landed on top of tile
         player.y = Math.floor((testY) / tileSize) * tileSize - player.h - 0.001;
@@ -314,16 +332,23 @@ function collideVertical() {
 
         player.vy = 0;
 
-        // remember slip for movement tuning
-        player.onSlip = (behavior === 'slip');
         // refresh coyote window when we touched ground
-        player.coyoteUntil = Date.now() + player.coyoteTime;
+        player.coyoteUntil = Date.now() + MOVE.coyoteTime;
 
         if (behavior === 'unstable') {
           const key = `${r},${c}`;
-          if (!unstableTimers[key]) {
-            // break after 500ms
-            unstableTimers[key] = Date.now() + 500;
+          if (!unstableState[key]) {
+            const now = Date.now();
+            const breakDelay = 500; // ms until tile breaks after landing
+            unstableState[key] = {
+              state: 'crumbling',
+              start: now,
+              breakAt: now + breakDelay,
+              // respawn will be scheduled after break (breakAt + 6000ms)
+              respawnAt: now + breakDelay + 6000,
+              fallY: 0,
+              vy: 0
+            };
           }
         }
       } else {
@@ -388,6 +413,40 @@ function loop(t) {
     }
   }
 
+  // draw unstable tile visuals (crumbling and falling debris)
+  {
+    const now = Date.now();
+    for (const key in unstableState) {
+      const st = unstableState[key];
+      const [rr, cc] = key.split(',').map(Number);
+      const x = cc * tileSize;
+      const y = rr * tileSize;
+      const color = tileProperties[Tile.Unstable].color;
+      if (!color) continue;
+
+      if (st.state === 'crumbling') {
+        const prog = Math.max(0, Math.min(1, (now - st.start) / Math.max(1, st.breakAt - st.start)));
+        const wobble = Math.sin(prog * Math.PI * 6) * 4 * (1 - prog);
+        const alpha = 1 - prog * 0.6;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(x + tileSize/2, y + tileSize/2 + Math.sin(prog * Math.PI) * 3);
+        ctx.rotate(wobble * 0.01);
+        ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+        ctx.fillRect(-tileSize/2, -tileSize/2, tileSize, tileSize);
+        ctx.strokeStyle = '#0004';
+        ctx.strokeRect(-tileSize/2, -tileSize/2, tileSize, tileSize);
+        ctx.restore();
+      } else if (st.state === 'fallen') {
+        ctx.save();
+        ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+        const pad = tileSize * 0.15;
+        ctx.fillRect(x + pad, y + st.fallY + pad, tileSize - pad*2, tileSize - pad*2);
+        ctx.restore();
+      }
+    }
+  }
+
   // draw player (simple rectangle)
   ctx.fillStyle = '#d33';
   ctx.fillRect(player.x, player.y, player.w, player.h);
@@ -419,6 +478,8 @@ function showLevelLoadedMessage() {
 (async function init() {
   try {
     parseLevelText(levelText);
+    // take a snapshot of the original level so unstable tiles can respawn
+    baseLevel = level.map(row => row.slice());
     showLevelLoadedMessage();
   } catch (err) {
     console.error('Failed to parse level data.', err);
