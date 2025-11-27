@@ -37,6 +37,9 @@ let musicStarted = false;
 ////////// JUMP SFX  ////////////
 const jumpSfx = document.getElementById("JumpSfx");
 
+///////// DEATH SFX ////////////
+const deathSfx = document.getElementById("DeathSfx");
+
 // browsers require user interaction before playing audio
 window.addEventListener('keydown', () => {
     if (!musicStarted) {
@@ -103,6 +106,9 @@ const player = {
 // spawn/respawn
 const spawn = { x: 40, y: 40 };
 function respawn() {
+  if (deathSfx) {
+    deathSfx.cloneNode(true).play().catch(() => {});
+  }
   player.x = spawn.x;
   player.y = spawn.y;
   player.vx = 0;
