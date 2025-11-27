@@ -34,6 +34,9 @@ let jumpFrame = 0;
 const bgm = document.getElementById('Soundtrack');
 let musicStarted = false;
 
+////////// JUMP SFX  ////////////
+const jumpSfx = document.getElementById("JumpSfx");
+
 // browsers require user interaction before playing audio
 window.addEventListener('keydown', () => {
     if (!musicStarted) {
@@ -268,6 +271,10 @@ function update(dt) {
     player.onGround = false;
     jumpFrame = 0;
     player.coyoteUntil = 0;
+
+    if(jumpSfx){
+      jumpSfx.cloneNode(true).play().catch(() => {});
+    }
   }
 
   // vertical physics
