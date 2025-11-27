@@ -129,7 +129,8 @@ const Tile = {
   Solid: 1,
   Kill: 2,
   Unstable: 3,
-  Ice: 4
+  Ice: 4,
+  Breakable: 5
 };
 
 const tileProperties = {
@@ -137,7 +138,8 @@ const tileProperties = {
   [Tile.Solid]: { color: [135, 170, 35], solid: true, behavior: 'solid' },
   [Tile.Kill]: { color: [255, 60, 60], solid: false, behavior: 'kill' },
   [Tile.Unstable]: { color: [255, 200, 0], solid: true, behavior: 'unstable' },
-  [Tile.Ice]: { color: [214, 255, 250], solid: true, behavior: 'ice' }
+  [Tile.Ice]: { color: [214, 255, 250], solid: true, behavior: 'ice' },
+  [Tile.Breakable]: {color: [132, 76, 59], solid: true, behavior: 'breakable' }
 };
 
 const level = [];
@@ -173,7 +175,7 @@ function parseLevelText(text) {
       continue;
     }
 
-    if (ch >= '0' && ch <= '4') {
+    if (ch >= '0' && ch <= '5') {
       level[r][c] = Number(ch);
     } else {
       level[r][c] = Tile.Empty;
@@ -194,7 +196,7 @@ const levelText = `0000000000000000000000000000000000000000000000000000000000021
 0000000000000000000000000002002000000000000020000000000000000000000000100000000000000000000000000000
 0000000000000000000000000000000000000000000020003333300000000000000000000000000000000000000000000000
 0000000000000000000000033333333333300000000020000000000000002000000000000000000000000000000000000000
-0000000000000004004000000000000000000000000020000000000000301000111111100000000000000000000000000000
+0000055500000004004000000000000000000000000020000000000000301000111111100000000000000000000000000000
 0000000000100001221000000000000000000000000020000000000010001000000000000000000000000000000000000000
 0000000000000001221222222222222222222222222222222222222212221000122222200000000000000000000000000000
 1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
@@ -362,7 +364,7 @@ function collideVertical() {
       return;
     }
 
-    if (behavior === 'solid' || behavior === 'unstable' || behavior === 'ice') {
+    if (behavior === 'solid' || behavior === 'unstable' || behavior === 'ice' || behavior === 'breakable') {
       if (sign > 0) {
         // landed on top of tile
         player.y = Math.floor((testY) / tileSize) * tileSize - player.h - 0.001;
@@ -390,13 +392,28 @@ function collideVertical() {
               vy: 0
             };
           }
-        }
+        } 
+        
+        // landing on breakable from above acts like normal block
+        return;
       } else {
-        // hit bottom of tile
-        player.y = (Math.floor(testY / tileSize) + 1) * tileSize + 0.001;
-        player.vy = 0;
+        // hitting breakable tile from below
+        if (behavior === 'breakable') {
+          if(level[r] && level[r][c] === Tile.Breakable) {
+            level[r][c] = Tile.Empty;
+          }
+        
+          // hit bottom of tile
+          player.y = (Math.floor(testY / tileSize) + 1) * tileSize + 0.001;
+          player.vy = 0;
+
+          return;
+        } else {
+          player.y = (Math.floor(testY / tileSize) + 1) *tileSize * 0.001;
+          player.vy = 0;
+          return;
+        }
       }
-      return;
     }
   }
 }
