@@ -29,6 +29,32 @@ const ctx = canvas.getContext('2d');
 
 ctx.imageSmoothingEnabled = false;
 
+// load background layers for parallax
+const bgFar = new Image();
+bgFar.src = 'assets/background/far.png';
+
+const bgNear = new Image();
+bgNear.src = 'assets/background/near.png';
+
+// load sprite sheet
+const tilesSpriteSheet = new Image();
+tilesSpriteSheet.src = 'assets/platformer_tiles.png';
+
+// sprite layout: 2 rows x 6 columns, each 64x64
+// row 0: grass variants, row 1: grassless variants
+function getTileSpriteCoords(tileType, isGrass, r, c) {
+  const spriteSize = 64;
+  const variants = 6;
+  const row = isGrass ? 0 : 1;
+  // use tile position (r, c) as seed for consistent variant selection
+  const col = (r * 71 + c * 73) % variants;
+  return {
+    sx: col * spriteSize,
+    sy: row * spriteSize,
+    sw: spriteSize,
+    sh: spriteSize
+  };
+}
 // === MARIO SPRITES ===
 const marioImageRight = new Image();
 marioImageRight.src = 'assets/player.png';   // facing right
@@ -128,7 +154,7 @@ const MOVE = {
   accelAir: 0.15,
   gravity: 0.55,
   maxFallSpeed: 14,
-  jumpPower: 12,
+  jumpPower: 12.6, //enough for 4 blocks high
   jumpCutMultiplier: 0.5,
 
   //if on ice
@@ -171,8 +197,8 @@ function respawn() {
 
 // tiles
 const Tile = {
-  Empty: 0,
-  Solid: 1,
+  Void: 0,
+  Dirt: 1,
   Lava: 2,
   Crumble: 3,
   Ice: 4,
@@ -190,8 +216,8 @@ const BehaviorFlags = {
 };
 
 const tileProperties = {
-  [Tile.Empty]: { color: null, behaviors: BehaviorFlags.None },
-  [Tile.Solid]: { color: [100, 140, 30], behaviors: BehaviorFlags.Solid },
+  [Tile.Void]: { color: null, behaviors: BehaviorFlags.None },
+  [Tile.Dirt]: { color: [100, 140, 30], behaviors: BehaviorFlags.Solid },
   [Tile.Lava]: { color: [150, 60, 60], behaviors: BehaviorFlags.Kill },
   [Tile.Crumble]: { color: [60, 60, 60], behaviors: BehaviorFlags.Unstable },
   [Tile.Ice]: { color: [150, 180, 240], behaviors: BehaviorFlags.Slippery },
@@ -212,7 +238,7 @@ const level = [];
 
 function parseLevelText(text) {
   // initialize empty rows
-  for (let rr = 0; rr < rows; rr++) level[rr] = new Array(cols).fill(Tile.Empty);
+  for (let rr = 0; rr < rows; rr++) level[rr] = new Array(cols).fill(Tile.Void);
 
   let r = 0, c = 0;
   let skipUntilNewline = false;
@@ -241,7 +267,7 @@ function parseLevelText(text) {
     if (ch >= '0' && ch <= '6') {
       level[r][c] = Number(ch);
     } else {
-      level[r][c] = Tile.Empty; // TODO: change error handling here (probably)
+      level[r][c] = Tile.Void; // TODO: change error handling here (probably)
     }
     c++;
   }
@@ -256,9 +282,9 @@ const destructionState = {};
 function tileAtPixel(px, py) {
   const c = Math.floor(px / tileSize);
   const r = Math.floor(py / tileSize);
-  if (r < 0 || r >= rows || c < 0 || c >= cols) return Tile.Empty;
+  if (r < 0 || r >= rows || c < 0 || c >= cols) return Tile.Void;
   // guard if level rows are not initialized for some reason
-  if (!level[r]) return Tile.Empty;
+  if (!level[r]) return Tile.Void;
   return level[r][c];
 }
 
@@ -348,7 +374,7 @@ function update(dt) {
 
     if (st.state === 'crumbling' && now >= st.breakAt) {
       // break the tile (becomes empty) and start falling debris
-      if (level[rr] && level[rr][cc] !== Tile.Empty) level[rr][cc] = Tile.Empty;
+      if (level[rr] && level[rr][cc] !== Tile.Void) level[rr][cc] = Tile.Void;
       st.state = 'fallen';
       st.fallY = 0;
       st.vy = 0;
@@ -519,7 +545,7 @@ function collideVertical() {
             };
           }
           // remove tile immediately from level for physics
-          if (level[r] && level[r][c] !== Tile.Empty) level[r][c] = Tile.Empty;
+          if (level[r] && level[r][c] !== Tile.Void) level[r][c] = Tile.Void;
           // hit bottom of tile
           player.y = (Math.floor(testY / tileSize) + 1) * tileSize + 0.001;
           player.vy = 0;
@@ -574,6 +600,31 @@ function loop(t) {
   // render background
   ctx.fillStyle = '#77D';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // draw parallax backgrounds in screen space (before camera transform)
+  if (bgFar.complete && bgFar.naturalHeight > 0) {
+    const farOffsetX = ((-camera.x * 0.2) % bgFar.width) * camera.scale;
+    const farOffsetY = ((-camera.y * 0.2) % bgFar.height) * camera.scale;
+    const bgWidth = bgFar.width * camera.scale;
+    const bgHeight = bgFar.height * camera.scale;
+    for (let x = farOffsetX - bgWidth; x < canvas.width; x += bgWidth) {
+      for (let y = farOffsetY - bgHeight; y < canvas.height; y += bgHeight) {
+        ctx.drawImage(bgFar, x, y, bgWidth, bgHeight);
+      }
+    }
+  }
+  if (bgNear.complete && bgNear.naturalHeight > 0) {
+    const nearOffsetX = ((-camera.x * 0.5) % bgNear.width) * camera.scale;
+    const nearOffsetY = ((-camera.y * 0.5) % bgNear.height) * camera.scale;
+    const bgWidth = bgNear.width * camera.scale;
+    const bgHeight = bgNear.height * camera.scale;
+    for (let x = nearOffsetX - bgWidth; x < canvas.width; x += bgWidth) {
+      for (let y = nearOffsetY - bgHeight; y < canvas.height; y += bgHeight) {
+        ctx.drawImage(bgNear, x, y, bgWidth, bgHeight);
+      }
+    }
+  }
+  
   ctx.save();
   ctx.scale(camera.scale, camera.scale);
   ctx.translate(-camera.x, -camera.y);
@@ -604,14 +655,33 @@ function loop(t) {
   for (let r=0; r<rows; r++){
     for (let c=0; c<cols; c++){
       const tileType = level[r][c];
-      if (tileType !== Tile.Empty) {
+      if (tileType !== Tile.Void) {
         const props = tileProperties[tileType];
-        const color = props && props.color;
-        if (color) {
-          ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-          ctx.fillRect(c*tileSize, r*tileSize, tileSize, tileSize);
-          ctx.strokeStyle = '#0004';
-          ctx.strokeRect(c*tileSize, r*tileSize, tileSize, tileSize);
+        
+        // only apply textures to Solid (dirt) tiles for now
+        const isSolidTile = hasBehavior(props.behaviors, BehaviorFlags.Solid);
+        
+        if (isSolidTile && tilesSpriteSheet.complete) {
+          // determine if this tile should show grass or grassless
+          // grass if there's NO solid tile directly above (exposed top surface)
+          const tileAbove = r > 0 ? level[r-1][c] : Tile.Void;
+          const tileAboveProps = tileAbove !== Tile.Void ? tileProperties[tileAbove] : null;
+          const isGrass = !(tileAboveProps && hasBehavior(tileAboveProps.behaviors, BehaviorFlags.Solid));
+          
+          // draw from sprite sheet
+          const coords = getTileSpriteCoords(tileType, isGrass, r, c);
+          ctx.drawImage(
+            tilesSpriteSheet,
+            coords.sx, coords.sy, coords.sw, coords.sh,
+            c*tileSize, r*tileSize, tileSize, tileSize
+          );
+        } else {
+          // draw solid color for non-dirt tiles or while sprite sheet loading
+          const color = props && props.color;
+          if (color) {
+            ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+            ctx.fillRect(c*tileSize, r*tileSize, tileSize, tileSize);
+          }
         }
       }
     }
