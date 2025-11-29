@@ -6,22 +6,22 @@ const cols = 100; // wide level (camera will follow)
 const rows = 16; // fixed rows
 
 // Embedded level data (from level.txt) to avoid CORS issues when publishing
-const levelText = `0000000000000000000000000000000000000000000020000000000000021222222222000000000000000000000000000000
-0000000000000000000000000000000000000000000020000000300000001000011100000000001111111100000000000000
-0000000000000000000000000000000330000000000000000000200000001000000000000000660000000000000000000000
-0000000000000000000000000003300000003333326666623333300000331000000333300000000000000000000000000000
-0000000000000000000000000000000000000000020000020000000000001000000000000000000000000000000000000000
-0000000000000000000111110000000000000000022222220000000022221000103000000000000000000000000000000000
-0000000000000000000000000000000000000000000020000000000000001000000000000000000000000000000000000000
-0000000000000000000000066666666666600000000020000000000000002000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000020000000000000000000000000100000000000000000000000000000
-0000000000000000000000000000000000000000000020003333300000000000000000000000000000000000000000000000
-0000000000000000000000066666666666600000000020000000000000002000000000000000000000000000000000000000
-0000055500000004004000000000000000000000000020000000000000301000111111100000000000000000000000000000
-0000000000100001221000000000000000000000000020000000000010001000000000000000000000000000000000000000
-0000000000000001221222222222222222222222222222222222222212221000122222200000000000000000000000000000
-1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
-1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111`;
+const levelText = `0000000000000000000000011111111111111111111111111111111100000000000000000000000000000000000000000000
+0000000000000000000000010000000000000000000001000000000000000000000000000000000000000000000000000000
+0000000000000000000000010000000000000000000001000000000000000000000000000000000000000000000000000000
+0000000000000000000000015555555551000015555531666666666100006000000000000000000000000000000000000000
+0000000000000000000000015555555551000015555531000000000100006600000000000000000000000000000000000000
+0000000000000000000000010000000000000000000031000000000100006660000000000000000000000000000000000000
+0000000000000000010000010000000000000000000031666666666100006666000000000000000000000000000000000000
+0000000000000000110000010033333331000011111131000000000100006666600000000000000000000000000000000000
+0000000000000001110000010000000001222210000001000000000100006666660000000000000000000000000000000000
+0000000000000011110000010000000001222210000001666666666100006666666000000000000000000000000000000000
+0000000000000111110000013333333001222210000011000000000100001111111100000000000000000000000000000000
+0000000000001111110000000000000001111110000000000000000100000000000000000000000000000000000000000000
+0000000000011111110033000000000001111110000331444444444100000000000000000000000000000000000000000000
+0000000000111111110000013333333331111112222221444444444100000000000000000000000000000000000000000000
+1111111111111111112222212222222221111112222221111111111111111111111111111111111111111111111111111111
+1111111111111111112222212222222221111112222221111111111111111111111111111111111111111111111111111111`;
 
 // Tiny platformer engine - behavior-driven tiles
 const canvas = document.getElementById('game');
@@ -29,25 +29,54 @@ const ctx = canvas.getContext('2d');
 
 ctx.imageSmoothingEnabled = false;
 
-// load background layers for parallax
+// load background layers for parallax with variants
+const bgFarVariants = ['far.png', 'far2.png'];
+const bgNearVariants = ['near.png', 'near2.png', 'near3.png'];
+
 const bgFar = new Image();
-bgFar.src = 'assets/background/far.png';
+bgFar.src = 'assets/background/' + bgFarVariants[Math.floor(Math.random() * bgFarVariants.length)];
 
 const bgNear = new Image();
-bgNear.src = 'assets/background/near.png';
+bgNear.src = 'assets/background/' + bgNearVariants[Math.floor(Math.random() * bgNearVariants.length)];
 
 // load sprite sheet
 const tilesSpriteSheet = new Image();
-tilesSpriteSheet.src = 'assets/platformer_tiles.png';
+tilesSpriteSheet.src = 'assets/sprites/tiles.png';
 
-// sprite layout: 2 rows x 6 columns, each 64x64
-// row 0: grass variants, row 1: grassless variants
-function getTileSpriteCoords(tileType, isGrass, r, c) {
+// sprite layout: 9 rows x 6 columns, each 64x64
+// row 0: dirt top, 1: dirt bottom, 2: ice top, 3: ice bottom, 4: lava top, 5: lava bottom, 6: Bricks, 7: crumble, 8: thin ice
+function getTileSpriteCoords(tileType, isGrass, r, c, tileAnimFrame) {
   const spriteSize = 64;
-  const variants = 6;
-  const row = isGrass ? 0 : 1;
-  // use tile position (r, c) as seed for consistent variant selection
-  const col = (r * 71 + c * 73) % variants;
+  let row, col;
+  switch (tileType) {
+    case Tile.Dirt:
+      row = isGrass ? 0 : 1;
+      col = (r * 71 + c * 73) % 6;
+      break;
+    case Tile.Lava:
+      row = isGrass ? 4 : 5;
+      col = tileAnimFrame % 6;
+      break;
+    case Tile.Ice:
+      row = isGrass ? 2 : 3;
+      col = (r * 71 + c * 73) % 6;
+      break;
+    case Tile.Bricks:
+      row = 6;
+      col = (r * 71 + c * 73) % 6;
+      break;
+    case Tile.Crumble:
+      row = 7;
+      col = (r * 71 + c * 73) % 6;
+      break;
+    case Tile.ThinIce:
+      row = 8;
+      col = (r * 71 + c * 73) % 6;
+      break;
+    default:
+      row = 0;
+      col = 0;
+  }
   return {
     sx: col * spriteSize,
     sy: row * spriteSize,
@@ -57,15 +86,12 @@ function getTileSpriteCoords(tileType, isGrass, r, c) {
 }
 // === MARIO SPRITES ===
 const marioImageRight = new Image();
-marioImageRight.src = 'assets/player.png';   // facing right
-
-const marioImageLeft = new Image();
-marioImageLeft.src = 'assets/playerl.png';   // facing left
+marioImageRight.src = 'assets/sprites/player.png';   // facing right (will be flipped for left)
 
 // Animation state derived from original SMB sprite sheet
 const marioSprite = {
   imgR: marioImageRight,
-  imgL: marioImageLeft,
+  imgL: marioImageRight,  // use same image, flip in drawMario
   frameW: 16,
   frameH: 16,
   baseX: 80,   // idle small Mario X in the sheet (from your Player code)
@@ -82,6 +108,10 @@ let W = canvas.width, H = canvas.height;
 
 // camera (scales and translates to viewport)
 const camera = { x: 0, y: 0, scale: 1 };
+
+// tile animation frame for lava
+let tileAnimFrame = 0;
+let animCounter = 0;
 
 function updateCamera() {
   camera.scale = H / (rows * tileSize);
@@ -202,7 +232,7 @@ const Tile = {
   Lava: 2,
   Crumble: 3,
   Ice: 4,
-  Breakable: 5,
+  Bricks: 5,
   ThinIce: 6
 };
 
@@ -221,7 +251,7 @@ const tileProperties = {
   [Tile.Lava]: { color: [150, 60, 60], behaviors: BehaviorFlags.Kill },
   [Tile.Crumble]: { color: [60, 60, 60], behaviors: BehaviorFlags.Unstable },
   [Tile.Ice]: { color: [150, 180, 240], behaviors: BehaviorFlags.Slippery },
-  [Tile.Breakable]: { color: [132, 76, 59], behaviors: BehaviorFlags.Breakable },
+  [Tile.Bricks]: { color: [132, 76, 59], behaviors: BehaviorFlags.Breakable },
   [Tile.ThinIce]: { color: [180, 150, 240], behaviors: BehaviorFlags.Slippery | BehaviorFlags.Breakable | BehaviorFlags.Unstable }
 };
 
@@ -396,6 +426,13 @@ function update(dt) {
 
   updateMarioAnimation(dt);
 
+  // advance tile animation frame for lava (6 changes per second)
+  animCounter++;
+  if (animCounter >= 10) {
+    tileAnimFrame++;
+    animCounter = 0;
+  }
+
   // camera follow (center player horizontally within level bounds)
   camera.x = player.x - (W / camera.scale)/2 + player.w/2;
   camera.x = Math.max(0, Math.min(camera.x, cols*tileSize - (W / camera.scale)));
@@ -561,7 +598,7 @@ function collideVertical() {
 }
 
 function drawMario() {
-  const img = player.facingLeft ? marioSprite.imgL : marioSprite.imgR;
+  const img = marioSprite.imgR;  // use the same image for both directions
 
   // current frame source rect in the sprite sheet
   const frameOffset = marioSprite.frames[marioSprite.currentFrame] || 0;
@@ -580,7 +617,15 @@ function drawMario() {
 
   // only draw when image is loaded
   if (img.complete && img.naturalWidth !== 0) {
-    ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+    if (player.facingLeft) {
+      // flip horizontally
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, sx, sy, sw, sh, -dx - dw, dy, dw, dh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
   } else {
     // fallback: red box while image loading
     ctx.fillStyle = '#d33';
@@ -657,26 +702,23 @@ function loop(t) {
       const tileType = level[r][c];
       if (tileType !== Tile.Void) {
         const props = tileProperties[tileType];
-        
-        // only apply textures to Solid (dirt) tiles for now
-        const isSolidTile = hasBehavior(props.behaviors, BehaviorFlags.Solid);
-        
-        if (isSolidTile && tilesSpriteSheet.complete) {
-          // determine if this tile should show grass or grassless
-          // grass if there's NO solid tile directly above (exposed top surface)
+
+        if (tilesSpriteSheet.complete) {
+          // determine if this tile should show top or bottom variant
+          // top if there's NO solid tile directly above (exposed top surface)
           const tileAbove = r > 0 ? level[r-1][c] : Tile.Void;
           const tileAboveProps = tileAbove !== Tile.Void ? tileProperties[tileAbove] : null;
-          const isGrass = !(tileAboveProps && hasBehavior(tileAboveProps.behaviors, BehaviorFlags.Solid));
-          
+          const isTop = !(tileAboveProps && hasBehavior(tileAboveProps.behaviors, BehaviorFlags.Solid));
+
           // draw from sprite sheet
-          const coords = getTileSpriteCoords(tileType, isGrass, r, c);
+          const coords = getTileSpriteCoords(tileType, isTop, r, c, tileAnimFrame);
           ctx.drawImage(
             tilesSpriteSheet,
             coords.sx, coords.sy, coords.sw, coords.sh,
             c*tileSize, r*tileSize, tileSize, tileSize
           );
         } else {
-          // draw solid color for non-dirt tiles or while sprite sheet loading
+          // draw solid color while sprite sheet loading
           const color = props && props.color;
           if (color) {
             ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
